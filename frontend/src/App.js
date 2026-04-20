@@ -6,7 +6,7 @@ import {
   LineChart, Line
 } from "recharts";
 
-const API = "http://localhost:8080/api/expenses";
+const API = "https://expense-tracker-production-709c.up.railway.app/api/expenses";
 
 function App() {
   const [expenses, setExpenses] = useState([]);
