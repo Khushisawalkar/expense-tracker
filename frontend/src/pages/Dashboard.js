@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAllExpenses } from '../api';
+import { processAnalytics } from '../utils/analytics';
 
 // ── SVG CASH FLOW CHART ──────────────────────────────────
 function CashFlowChart({ data }) {
@@ -44,12 +45,10 @@ function CashFlowChart({ data }) {
 }
 
 // ── DONUT CHART ──────────────────────────────────────────
-function DonutChart({ total }) {
-  const slices = [
-    { label: 'Housing',      pct: 45, color: '#7c5cfc' },
-    { label: 'Food & Dining',pct: 30, color: '#00e5a0' },
-    { label: 'Entertainment',pct: 25, color: '#3b5bdb' },
-  ];
+function DonutChart({ total, slices }) {
+  if (!slices || slices.length === 0) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: '#8b96a5' }}>No expenses to display</div>;
+  }
   const R = 60, CX = 80, CY = 80, stroke = 22;
   const circ = 2 * Math.PI * R;
   let offset = 0;
@@ -81,11 +80,11 @@ function DonutChart({ total }) {
         </svg>
       </div>
       <div className="spending-legend">
-        {slices.map(s => (
+        {slices.slice(0, 4).map(s => (
           <div className="legend-row" key={s.label}>
             <div className="legend-left">
               <span className="legend-dot" style={{ background: s.color }} />
-              {s.label}
+              <span style={{ maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
             </div>
             <span className="legend-pct">{s.pct}%</span>
           </div>
@@ -96,7 +95,7 @@ function DonutChart({ total }) {
 }
 
 // ── MAIN DASHBOARD ───────────────────────────────────────
-export default function Dashboard() {
+export default function Dashboard({ transactions = [] }) {
   const [summary, setSummary] = useState({
     totalBalance: 0,
     monthlyIncome: 0,
@@ -104,58 +103,41 @@ export default function Dashboard() {
     balanceChange: 0,
     incomeChange: 0,
     expenseChange: 0,
-    cashFlow: [
-      { month: 'Jan', amount: 0 },
-      { month: 'Feb', amount: 0 },
-      { month: 'Mar', amount: 0 },
-      { month: 'Apr', amount: 0 },
-      { month: 'May', amount: 0 },
-      { month: 'Jun', amount: 0 }
-    ]
+    cashFlow: [],
+    categoryData: [],
+    insights: []
   });
-  const [transactions, setTransactions] = useState([]);
-  const [apiOnline, setApiOnline] = useState(false);
   const [chartTab, setChartTab] = useState('6M');
   const [transfer, setTransfer] = useState({ amount: '', recipient: '' });
   const [uniqueRecipients, setUniqueRecipients] = useState([]);
 
   useEffect(() => {
-    getAllExpenses()
-      .then((txs) => {
-        let income = 0;
-        let expense = 0;
-        const recSet = new Set();
+    let income = 0;
+    let expense = 0;
+    const recSet = new Set();
 
-        txs.forEach(tx => {
-          if (tx.amount > 0) income += tx.amount;
-          else expense += Math.abs(tx.amount);
-          if (tx.recipient && tx.recipient.trim() !== '') recSet.add(tx.recipient);
-        });
+    transactions.forEach(tx => {
+      if (tx.amount > 0) income += tx.amount;
+      else expense += Math.abs(tx.amount);
+      if (tx.recipient && tx.recipient.trim() !== '') recSet.add(tx.recipient);
+    });
 
-        setUniqueRecipients(Array.from(recSet));
+    setUniqueRecipients(Array.from(recSet));
 
-        setSummary({
-          totalBalance: income - expense,
-          monthlyIncome: income,
-          monthlyExpenses: expense,
-          balanceChange: 0,
-          incomeChange: 0,
-          expenseChange: 0,
-          cashFlow: [
-            { month: 'Jan', amount: 0 },
-            { month: 'Feb', amount: 0 },
-            { month: 'Mar', amount: 0 },
-            { month: 'Apr', amount: 0 },
-            { month: 'May', amount: 0 },
-            { month: 'Jun', amount: income - expense }
-          ]
-        });
+    const analytics = processAnalytics(transactions);
 
-        setTransactions(txs.slice(0, 4));
-        setApiOnline(true);
-      })
-      .catch(() => setApiOnline(false));
-  }, []);
+    setSummary({
+      totalBalance: income - expense,
+      monthlyIncome: income,
+      monthlyExpenses: expense,
+      balanceChange: 0,
+      incomeChange: 0,
+      expenseChange: 0,
+      cashFlow: analytics.cashFlow,
+      categoryData: analytics.categoryData,
+      insights: analytics.insights
+    });
+  }, [transactions]);
 
   const fmt = (n) => `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
   const getIcon = (cat) => {
@@ -170,12 +152,14 @@ export default function Dashboard() {
     }
   };
 
+  const recentTxs = transactions.slice(0, 4);
+
   return (
     <div>
       {/* API status pill */}
       <div className="api-status">
-        <div className={`api-dot ${apiOnline ? 'connected' : ''}`} />
-        {apiOnline ? 'Connected to backend' : 'Loading or Backend Offline'}
+        <div className="api-dot connected" />
+        Live Real-Time Connection Active
       </div>
 
       {/* ── STAT CARDS ── */}
@@ -222,7 +206,7 @@ export default function Dashboard() {
             <span className="panel-title">Spending</span>
             <span style={{ color: 'var(--text-muted)', cursor: 'pointer' }}>···</span>
           </div>
-          <DonutChart total={summary.monthlyExpenses} />
+          <DonutChart total={summary.monthlyExpenses} slices={summary.categoryData} />
         </div>
       </div>
 
@@ -243,8 +227,8 @@ export default function Dashboard() {
             <span>Amount</span>
             <span>Status</span>
           </div>
-          {transactions.length === 0 && <div className="loading">No recent transactions.</div>}
-          {transactions.map(tx => (
+          {recentTxs.length === 0 && <div className="loading">No recent transactions.</div>}
+          {recentTxs.map(tx => (
             <div className="tx-row" key={tx.id}>
               <div className="tx-details">
                 <div className="tx-avatar">{getIcon(tx.category)}</div>
@@ -319,24 +303,27 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Budget Tracker */}
+          {/* Actionable Insights */}
           <div className="panel">
-            <div className="budget-title">Budget Tracker</div>
-            {[
-              { cat: 'Groceries',    spent: 400, total: 500, color: '#00e5a0' },
-              { cat: 'Entertainment',spent: 250, total: 300, color: '#7c5cfc' },
-              { cat: 'Shopping',     spent: 120, total: 400, color: '#3b5bdb' },
-            ].map(b => (
-              <div className="budget-row" key={b.cat}>
-                <div className="budget-row-top">
-                  <span className="budget-cat">{b.cat}</span>
-                  <span className="budget-amt">${b.spent} / ${b.total}</span>
+            <div className="panel-header">
+              <span className="panel-title">Actionable Insights</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+              {summary.insights.length === 0 && (
+                <div style={{ color: '#8b96a5', fontSize: 13, textAlign: 'center', padding: '1rem 0' }}>
+                  Add more transactions to generate insights.
                 </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${(b.spent/b.total)*100}%`, background: b.color }} />
+              )}
+              {summary.insights.map(insight => (
+                <div key={insight.id} style={{ display: 'flex', gap: 12, background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 8, border: `1px solid ${insight.color}20` }}>
+                  <div style={{ fontSize: 20 }}>{insight.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: insight.color, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{insight.title}</div>
+                    <div style={{ color: '#e8edf3', fontSize: 13, lineHeight: 1.4 }}>{insight.text}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -32,11 +32,13 @@ public class WebSocketChannelInterceptor implements ChannelInterceptor {
                 token = token.substring(7);
                 try {
                     String username = jwtUtil.extractUsername(token);
-                    if (username != null && jwtUtil.validateToken(token, username)) {
+                    if (username != null) {
                         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                                userDetails, null, userDetails.getAuthorities());
-                        accessor.setUser(auth);
+                        if (jwtUtil.validateToken(token, userDetails)) {
+                            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                                    userDetails, null, userDetails.getAuthorities());
+                            accessor.setUser(auth);
+                        }
                     }
                 } catch (Exception e) {
                     // Invalid token, do not set user

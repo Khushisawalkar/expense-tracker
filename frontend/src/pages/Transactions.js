@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { getAllExpenses, addExpense, updateExpense, deleteExpense } from '../api';
+import React, { useState } from 'react';
+import { addExpense, updateExpense, deleteExpense } from '../api';
+import toast from 'react-hot-toast';
 
 const CATEGORIES = ['All', 'Income', 'Groceries', 'Entertainment', 'Transport', 'Shopping', 'Utilities'];
 
-export default function Transactions() {
-  const [txs, setTxs] = useState([]);
+export default function Transactions({ transactions = [] }) {
   const [filter, setFilter] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ title: '', recipient: '', location: '', category: 'Groceries', amount: '', date: '', type: 'expense' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    getAllExpenses()
-      .then(data => setTxs(data))
-      .catch(() => {});
-  }, []);
-
-  const filtered = filter === 'All' ? txs : txs.filter(t => t.category === filter);
+  const filtered = filter === 'All' ? transactions : transactions.filter(t => t.category === filter);
 
   const openAddModal = () => {
     setEditingId(null);
@@ -40,7 +34,10 @@ export default function Transactions() {
   };
 
   const handleSave = async () => {
-    if (!form.title || !form.amount) return;
+    if (!form.title || !form.amount) {
+        toast.error("Title and Amount are required!");
+        return;
+    }
     const amt = form.type === 'expense' ? -Math.abs(parseFloat(form.amount)) : Math.abs(parseFloat(form.amount));
     const txData = {
       title: form.title,
@@ -53,14 +50,14 @@ export default function Transactions() {
     try {
       setLoading(true);
       if (editingId) {
-        const saved = await updateExpense(editingId, txData);
-        setTxs(prev => prev.map(t => t.id === editingId ? saved : t));
+        await updateExpense(editingId, txData);
+        toast.success("Transaction updated!");
       } else {
-        const saved = await addExpense(txData);
-        setTxs(prev => [saved, ...prev]);
+        await addExpense(txData);
+        toast.success("Transaction added!");
       }
     } catch {
-      alert("Failed to save transaction to database");
+      toast.error("Failed to save transaction.");
     } finally {
       setLoading(false);
       setShowModal(false);
@@ -70,8 +67,12 @@ export default function Transactions() {
   };
 
   const handleDelete = async (id) => {
-    try { await deleteExpense(id); } catch {}
-    setTxs(prev => prev.filter(t => t.id !== id));
+    try { 
+        await deleteExpense(id); 
+        toast.success("Transaction deleted!");
+    } catch {
+        toast.error("Failed to delete.");
+    }
   };
 
   const fmt = (n) => `${n < 0 ? '-' : '+'}$${Math.abs(n).toFixed(2)}`;
