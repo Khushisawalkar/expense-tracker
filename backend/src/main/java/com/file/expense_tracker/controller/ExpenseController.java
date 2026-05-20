@@ -1,7 +1,11 @@
 package com.file.expense_tracker.controller;
 
-import com.file.expense_tracker.model.Expense;
+import com.file.expense_tracker.dto.ExpenseRequestDTO;
+import com.file.expense_tracker.dto.ExpenseResponseDTO;
 import com.file.expense_tracker.service.ExpenseService;
+import jakarta.validation.Valid;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,17 +22,35 @@ public class ExpenseController {
     }
 
     @GetMapping
-    public List<Expense> getAll() {
-        return service.getAll();
+    public List<ExpenseResponseDTO> getAll() {
+        String username = getUsername();
+        return service.getAllByUser(username);
     }
 
     @PostMapping
-    public Expense add(@RequestBody Expense e) {
-        return service.save(e);
+    public ExpenseResponseDTO add(@Valid @RequestBody ExpenseRequestDTO dto) {
+        String username = getUsername();
+        return service.save(dto, username);
+    }
+
+    @PutMapping("/{id}")
+    public ExpenseResponseDTO update(@PathVariable Long id, @Valid @RequestBody ExpenseRequestDTO dto) {
+        String username = getUsername();
+        return service.update(id, dto, username);
     }
 
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) {
-        service.delete(id);
+        String username = getUsername();
+        service.delete(id, username);
+    }
+
+    private String getUsername() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof UserDetails) {
+            return ((UserDetails) principal).getUsername();
+        } else {
+            return principal.toString();
+        }
     }
 }

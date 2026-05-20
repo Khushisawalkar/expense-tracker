@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { getAllExpenses, getSummary, MOCK_TRANSACTIONS, MOCK_SUMMARY } from '../api';
+import { getAllExpenses } from '../api';
 
 // ── SVG CASH FLOW CHART ──────────────────────────────────
 function CashFlowChart({ data }) {
+  if (!data || data.length === 0) return <div>No data available</div>;
   const W = 560, H = 180, PAD = 20;
-  const max = Math.max(...data.map(d => d.amount));
+  const max = Math.max(...data.map(d => d.amount), 1);
   const pts = data.map((d, i) => {
-    const x = PAD + (i / (data.length - 1)) * (W - PAD * 2);
+    const x = PAD + (i / (data.length - 1 || 1)) * (W - PAD * 2);
     const y = H - PAD - (d.amount / max) * (H - PAD * 2);
     return `${x},${y}`;
   });
@@ -35,7 +36,7 @@ function CashFlowChart({ data }) {
       })}
       {/* x labels */}
       {data.map((d, i) => {
-        const x = PAD + (i / (data.length - 1)) * (W - PAD * 2);
+        const x = PAD + (i / (data.length - 1 || 1)) * (W - PAD * 2);
         return <text key={i} x={x} y={H + 4} textAnchor="middle" fill="#4a5568" fontSize="11" fontFamily="DM Sans">{d.month}</text>;
       })}
     </svg>
@@ -96,17 +97,60 @@ function DonutChart({ total }) {
 
 // ── MAIN DASHBOARD ───────────────────────────────────────
 export default function Dashboard() {
-  const [summary, setSummary]         = useState(MOCK_SUMMARY);
-  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS.slice(0, 4));
-  const [apiOnline, setApiOnline]     = useState(false);
-  const [chartTab, setChartTab]       = useState('6M');
-  const [transfer, setTransfer]       = useState({ amount: '', recipient: '' });
+  const [summary, setSummary] = useState({
+    totalBalance: 0,
+    monthlyIncome: 0,
+    monthlyExpenses: 0,
+    balanceChange: 0,
+    incomeChange: 0,
+    expenseChange: 0,
+    cashFlow: [
+      { month: 'Jan', amount: 0 },
+      { month: 'Feb', amount: 0 },
+      { month: 'Mar', amount: 0 },
+      { month: 'Apr', amount: 0 },
+      { month: 'May', amount: 0 },
+      { month: 'Jun', amount: 0 }
+    ]
+  });
+  const [transactions, setTransactions] = useState([]);
+  const [apiOnline, setApiOnline] = useState(false);
+  const [chartTab, setChartTab] = useState('6M');
+  const [transfer, setTransfer] = useState({ amount: '', recipient: '' });
+  const [uniqueRecipients, setUniqueRecipients] = useState([]);
 
   useEffect(() => {
-    // Try real API, fall back to mock silently
-    Promise.all([getSummary(), getAllExpenses()])
-      .then(([sum, txs]) => {
-        setSummary(sum);
+    getAllExpenses()
+      .then((txs) => {
+        let income = 0;
+        let expense = 0;
+        const recSet = new Set();
+
+        txs.forEach(tx => {
+          if (tx.amount > 0) income += tx.amount;
+          else expense += Math.abs(tx.amount);
+          if (tx.recipient && tx.recipient.trim() !== '') recSet.add(tx.recipient);
+        });
+
+        setUniqueRecipients(Array.from(recSet));
+
+        setSummary({
+          totalBalance: income - expense,
+          monthlyIncome: income,
+          monthlyExpenses: expense,
+          balanceChange: 0,
+          incomeChange: 0,
+          expenseChange: 0,
+          cashFlow: [
+            { month: 'Jan', amount: 0 },
+            { month: 'Feb', amount: 0 },
+            { month: 'Mar', amount: 0 },
+            { month: 'Apr', amount: 0 },
+            { month: 'May', amount: 0 },
+            { month: 'Jun', amount: income - expense }
+          ]
+        });
+
         setTransactions(txs.slice(0, 4));
         setApiOnline(true);
       })
@@ -114,21 +158,32 @@ export default function Dashboard() {
   }, []);
 
   const fmt = (n) => `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  const getIcon = (cat) => {
+    switch(cat) {
+      case 'Income': return '💼';
+      case 'Groceries': return '🛒';
+      case 'Entertainment': return '📺';
+      case 'Transport': return '🚗';
+      case 'Shopping': return '🛍️';
+      case 'Utilities': return '⚡';
+      default: return '💳';
+    }
+  };
 
   return (
     <div>
       {/* API status pill */}
       <div className="api-status">
         <div className={`api-dot ${apiOnline ? 'connected' : ''}`} />
-        {apiOnline ? 'Connected to backend' : 'Using mock data — start Spring Boot to connect'}
+        {apiOnline ? 'Connected to backend' : 'Loading or Backend Offline'}
       </div>
 
       {/* ── STAT CARDS ── */}
       <div className="stat-cards">
         {[
-          { label: 'Total Balance',     value: fmt(summary.totalBalance),    change: summary.balanceChange,  icon: '💰', up: summary.balanceChange > 0 },
-          { label: 'Monthly Income',    value: fmt(summary.monthlyIncome),   change: summary.incomeChange,   icon: '📈', up: summary.incomeChange > 0 },
-          { label: 'Monthly Expenses',  value: fmt(summary.monthlyExpenses), change: summary.expenseChange,  icon: '📤', up: summary.expenseChange > 0 },
+          { label: 'Total Balance',     value: fmt(summary.totalBalance),    change: summary.balanceChange,  icon: '💰', up: summary.totalBalance >= 0 },
+          { label: 'Monthly Income',    value: fmt(summary.monthlyIncome),   change: summary.incomeChange,   icon: '📈', up: summary.monthlyIncome >= 0 },
+          { label: 'Monthly Expenses',  value: fmt(summary.monthlyExpenses), change: summary.expenseChange,  icon: '📤', up: summary.monthlyExpenses > 0 },
         ].map(c => (
           <div className="stat-card" key={c.label}>
             <div className="stat-label">
@@ -188,13 +243,18 @@ export default function Dashboard() {
             <span>Amount</span>
             <span>Status</span>
           </div>
+          {transactions.length === 0 && <div className="loading">No recent transactions.</div>}
           {transactions.map(tx => (
             <div className="tx-row" key={tx.id}>
               <div className="tx-details">
-                <div className="tx-avatar">{tx.icon || '💳'}</div>
+                <div className="tx-avatar">{getIcon(tx.category)}</div>
                 <div>
-                  <div className="tx-name">{tx.name}</div>
-                  <div className="tx-cat">{tx.category}</div>
+                  <div className="tx-name">{tx.title}</div>
+                  <div className="tx-cat">
+                    {tx.category} 
+                    {tx.recipient && ` • To: ${tx.recipient}`}
+                    {tx.location && ` • At: ${tx.location}`}
+                  </div>
                 </div>
               </div>
               <div className="tx-date">{tx.date}</div>
@@ -202,7 +262,7 @@ export default function Dashboard() {
                 {tx.amount < 0 ? '-' : '+'}{fmt(tx.amount)}
               </div>
               <div>
-                <span className={`tx-status ${tx.status}`}>{tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}</span>
+                <span className="tx-status completed">Completed</span>
               </div>
             </div>
           ))}
@@ -231,12 +291,18 @@ export default function Dashboard() {
               <div>
                 <div className="input-label">Send to</div>
                 <div className="input-field">
-                  <select value={transfer.recipient} onChange={e => setTransfer(p => ({ ...p, recipient: e.target.value }))}>
-                    <option value="">Select recipient...</option>
-                    <option value="alice">Alice Chen</option>
-                    <option value="bob">Bob Smith</option>
-                    <option value="carol">Carol White</option>
-                  </select>
+                  <input 
+                    list="recipients" 
+                    placeholder="Type or select recipient..." 
+                    value={transfer.recipient} 
+                    onChange={e => setTransfer(p => ({ ...p, recipient: e.target.value }))}
+                    style={{ background: 'transparent', border: 'none', color: 'white', width: '100%', outline: 'none' }}
+                  />
+                  <datalist id="recipients">
+                    {uniqueRecipients.map(r => (
+                      <option key={r} value={r} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
               <button

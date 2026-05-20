@@ -1,16 +1,10 @@
-package com.file.expense_tracker.model;
+package com.file.expense_tracker.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import jakarta.persistence.*;
+import com.file.expense_tracker.model.Expense;
 import java.time.LocalDate;
 
-@Entity
-public class Expense {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class ExpenseResponseDTO {
     private Long id;
-
     private String title;
     private String category;
     private double amount;
@@ -18,12 +12,18 @@ public class Expense {
     private String recipient;
     private String location;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnore
-    private User user;
+    public ExpenseResponseDTO(Expense e) {
+        this.id = e.getId();
+        this.title = e.getTitle();
+        this.category = e.getCategory();
+        this.amount = e.getAmount();
+        this.date = e.getDate();
+        this.recipient = e.getRecipient();
+        this.location = e.getLocation();
+    }
 
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
@@ -42,7 +42,4 @@ public class Expense {
 
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }
-
-    public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
 }
